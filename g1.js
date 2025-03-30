@@ -23,17 +23,15 @@ async function scrapeG1() {
     });
 
     console.log('Esperando conteúdo carregar...');
-    // Método compatível com versões antigas para espera
     await new Promise(resolve => setTimeout(resolve, 3000));
     
     // Verifica se o elemento específico existe
     const elementoExiste = await page.evaluate(() => {
-      return !!document.querySelector('.bstn-hl-title');
+      return !!document.querySelector('.bstn-hl-title, .feed-post-link');
     });
 
     if (!elementoExiste) {
-      console.log('Elemento .bstn-hl-title não encontrado, tentando rolar a página...');
-      // Rola a página para carregar conteúdo dinâmico
+      console.log('Elemento principal não encontrado, tentando rolar a página...');
       await page.evaluate(() => {
         window.scrollBy(0, window.innerHeight);
       });
@@ -44,31 +42,50 @@ async function scrapeG1() {
     const noticias = await page.evaluate(() => {
       const results = [];
       
-      // Captura específica para a notícia desejada
-      const tituloDestaque = document.querySelector('.bstn-hl-title');
-      if (tituloDestaque) {
-        const container = tituloDestaque.closest('a') || tituloDestaque.closest('[class*="bstn-hl"]');
-        if (container) {
+      // Função para extrair dados de forma segura
+      const extractData = (element) => {
+        const container = element.closest('.feed-post, .bstn-fd-item, a, [class*="bstn-hl"]') || element;
+        return {
+          container,
+          link: container.href || window.location.href,
+          resumo: container.querySelector('.feed-post-body-resumo, .bstn-fd-item-resumo, .bstn-hl-summary, .bstn-h1-summary')?.innerText?.trim() || '',
+          imagem: container.querySelector('img')?.src || ''
+        };
+      };
+
+      // Captura notícias em destaque
+      const destaques = document.querySelectorAll('.bstn-hl, .bstn-hl-title, .feed-post-link');
+      destaques.forEach(item => {
+        const { container, link, resumo, imagem } = extractData(item);
+        const titulo = item.innerText.trim();
+        
+        if (titulo && link) {
           results.push({
-            titulo: tituloDestaque.innerText.trim(),
-            link: container.href || window.location.href,
-            tipo: 'destaque_principal'
+            titulo,
+            link,
+            resumo,
+            imagem,
+            tipo: 'destaque_principal',
+            tag:'G1'
           });
         }
-      }
+      });
 
       // Captura outras notícias
-      document.querySelectorAll('.feed-post-link, .bstn-fd-item-title, [class*="title"]').forEach(item => {
-        const link = item.closest('a')?.href;
-        if (link && item.innerText.trim()) {
-          // Evita duplicatas
-          if (!results.some(noticia => noticia.titulo === item.innerText.trim())) {
-            results.push({
-              titulo: item.innerText.trim(),
-              link: link,
-              tipo: 'comum'
-            });
-          }
+      const outrasNoticias = document.querySelectorAll('.feed-post, .bstn-fd-item, [class*="title"]');
+      outrasNoticias.forEach(item => {
+        const { container, link, resumo, imagem } = extractData(item);
+        const titulo = item.innerText.trim();
+        
+        if (titulo && link && !results.some(noticia => noticia.titulo === titulo)) {
+          results.push({
+            titulo,
+            link,
+            resumo,
+            imagem,
+            tipo: 'comum',
+            tag:'G1'
+          });
         }
       });
 
@@ -99,7 +116,7 @@ app.get('/', async (req, res) => {
       });
     }
     
-    // Filtra para mostrar primeiro a notícia específica da página
+    // Filtra para mostrar primeiro a notícia em destaque
     const noticiaDestaque = noticias.find(n => n.tipo === 'destaque_principal');
     res.json({
       noticia_especial: noticiaDestaque,

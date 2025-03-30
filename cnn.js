@@ -4,9 +4,9 @@ const cors = require('cors');
 
 const app = express();
 app.use(cors());
-const PORT = 3000;
+const PORT = 3001;
 
-async function scrapeG1() {
+async function scrapeCNN() {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -23,27 +23,24 @@ async function scrapeG1() {
     });
 
     console.log('Esperando conteúdo carregar...');
-    // Método compatível com versões antigas para espera
     await new Promise(resolve => setTimeout(resolve, 3000));
     
-    // Verifica se o elemento específico existe
-    const elementoExiste = await page.evaluate(() => {
-      return !!document.querySelector('.block__news__title');
-    });
-
-    if (!elementoExiste) {
-      console.log('Elemento .block__news__title não encontrado, tentando rolar a página...');
-      // Rola a página para carregar conteúdo dinâmico
-      await page.evaluate(() => {
-        window.scrollBy(0, window.innerHeight);
-      });
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
     console.log('Extraindo notícias...');
     const noticias = await page.evaluate(() => {
       const results = [];
       
+      // Função para extrair a URL da imagem
+      const getImageUrl = (element) => {
+        const imgElement = element.querySelector('img') || 
+                         element.querySelector('picture source') ||
+                         element.querySelector('[data-src]');
+        
+        return imgElement?.src || 
+               imgElement?.dataset?.src || 
+               imgElement?.getAttribute('data-src') ||
+               null;
+      };
+
       // Captura específica para a notícia desejada
       const tituloDestaque = document.querySelector('.block__news__title');
       if (tituloDestaque) {
@@ -52,21 +49,29 @@ async function scrapeG1() {
           results.push({
             titulo: tituloDestaque.innerText.trim(),
             link: container.href || window.location.href,
-            tipo: 'destaque_principal'
+            imagem: getImageUrl(container),
+            tipo: 'destaque_principal',
+            tag: 'CNN', 
+            language: 'Portuguese'
           });
         }
       }
 
       // Captura outras notícias
       document.querySelectorAll('.block__news__related, .block__news__item, [class*="title"]').forEach(item => {
-        const link = item.closest('a')?.href;
+        const container = item.closest('article, .news-item, a') || item;
+        const link = container.href;
+        
         if (link && item.innerText.trim()) {
           // Evita duplicatas
           if (!results.some(noticia => noticia.titulo === item.innerText.trim())) {
             results.push({
               titulo: item.innerText.trim(),
               link: link,
-              tipo: 'comum'
+              imagem: getImageUrl(container),
+              tipo: 'comum',
+              tag: 'CNN',
+              language: 'Portuguese'
             });
           }
         }
@@ -89,7 +94,7 @@ async function scrapeG1() {
 app.get('/', async (req, res) => {
   try {
     console.log('Iniciando scraping...');
-    const noticias = await scrapeG1();
+    const noticias = await scrapeCNN();
     
     if (noticias.length === 0) {
       console.warn('Nenhuma notícia encontrada');
@@ -99,7 +104,7 @@ app.get('/', async (req, res) => {
       });
     }
     
-    // Filtra para mostrar primeiro a notícia específica que você quer
+    // Filtra para mostrar primeiro a notícia em destaque
     const noticiaDestaque = noticias.find(n => n.tipo === 'destaque_principal');
     res.json({
       noticia_especial: noticiaDestaque,
