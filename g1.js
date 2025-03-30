@@ -99,7 +99,7 @@ app.get('/', async (req, res) => {
       });
     }
     
-    // Filtra para mostrar primeiro a notícia específica que você quer
+    // Filtra para mostrar primeiro a notícia específica da página
     const noticiaDestaque = noticias.find(n => n.tipo === 'destaque_principal');
     res.json({
       noticia_especial: noticiaDestaque,
